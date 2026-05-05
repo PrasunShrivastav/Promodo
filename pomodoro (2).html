@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pomodoro Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #1a1a1f;
+    --surface2: #222228;
+    --border: rgba(255,255,255,0.08);
+    --text: #f0ede8;
+    --muted: #7a7a85;
+    --work: #e8614a;
+    --break: #4ab89e;
+    --long: #7b6ef6;
+    --accent: #e8614a;
+    --ring-bg: #1e1e24;
+  }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 4rem;
+  }
+
+  h1 {
+    font-size: 13px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 2.5rem;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Phase indicator pills */
+  .phase-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 2.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .pill {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 5px 14px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: var(--surface);
+    transition: all 0.3s;
+  }
+  .pill.active-work { background: var(--work); color: #fff; border-color: var(--work); }
+  .pill.active-break { background: var(--break); color: #0e1a17; border-color: var(--break); }
+  .pill.active-long { background: var(--long); color: #fff; border-color: var(--long); }
+  .pill.done { opacity: 0.35; }
+
+  /* Timer ring */
+  .ring-wrap {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    margin-bottom: 2rem;
+  }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  #ring-track { transition: none; }
+  #ring-progress { transition: stroke-dashoffset 1s linear; }
+
+  .timer-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .timer-phase {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+  .timer-time {
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.4s;
+  }
+  .timer-cycle {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 2.5rem;
+    align-items: center;
+  }
+  .btn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    border-radius: 100px;
+    padding: 12px 28px;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    min-width: 120px;
+  }
+  .btn-primary:hover { filter: brightness(1.1); transform: scale(1.03); }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+  .btn-stop {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 12px 20px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-stop:hover { color: var(--work); border-color: var(--work); }
+
+  /* Alarm banner */
+  .alarm-banner {
+    display: none;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface2);
+    border: 1px solid rgba(232,97,74,0.4);
+    border-radius: 14px;
+    padding: 16px 24px;
+    margin-bottom: 2rem;
+    width: 100%;
+    max-width: 420px;
+    animation: pulse-border 1s infinite;
+  }
+  .alarm-banner.show { display: flex; }
+  .alarm-text { flex: 1; }
+  .alarm-text strong { display: block; font-size: 15px; margin-bottom: 2px; }
+  .alarm-text span { font-size: 12px; color: var(--muted); font-family: 'Space Mono', monospace; }
+  @keyframes pulse-border {
+    0%, 100% { border-color: rgba(232,97,74,0.4); }
+    50% { border-color: rgba(232,97,74,0.9); }
+  }
+
+  /* Stats */
+  .stats-wrap {
+    width: 100%;
+    max-width: 420px;
+  }
+  .stats-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  .stats-title {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+  .btn-clear {
+    font-size: 11px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.05em;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: color 0.2s;
+  }
+  .btn-clear:hover { color: var(--work); }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 14px;
+    text-align: center;
+  }
+  .stat-val {
+    font-size: 28px;
+    font-weight: 800;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .stat-card:nth-child(1) .stat-val { color: var(--work); }
+  .stat-card:nth-child(2) .stat-val { color: var(--break); }
+  .stat-card:nth-child(3) .stat-val { color: var(--long); }
+
+  /* Session log */
+  .log-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .log-wrap::-webkit-scrollbar { width: 4px; }
+  .log-wrap::-webkit-scrollbar-track { background: transparent; }
+  .log-wrap::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 4px; }
+
+  .log-empty {
+    padding: 28px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    font-family: 'Space Mono', monospace;
+  }
+  .log-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .log-item:last-child { border-bottom: none; }
+  .log-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .log-dot.work { background: var(--work); }
+  .log-dot.break { background: var(--break); }
+  .log-dot.long { background: var(--long); }
+  .log-desc { flex: 1; color: var(--text); }
+  .log-time { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  /* color per phase */
+  .phase-work { color: var(--work); }
+  .phase-break { color: var(--break); }
+  .phase-long { color: var(--long); }
+</style>
+</head>
+<body>
+
+<h1>Pomodoro Timer</h1>
+
+<!-- Phase progress pills -->
+<div class="phase-bar" id="phase-bar"></div>
+
+<!-- Ring timer -->
+<div class="ring-wrap">
+  <svg width="280" height="280" viewBox="0 0 280 280">
+    <circle id="ring-track" cx="140" cy="140" r="126" fill="none" stroke="#1e1e24" stroke-width="12"/>
+    <circle id="ring-progress" cx="140" cy="140" r="126" fill="none" stroke="#e8614a"
+      stroke-width="12" stroke-linecap="round"
+      stroke-dasharray="791.68" stroke-dashoffset="0"/>
+  </svg>
+  <div class="timer-center">
+    <span class="timer-phase" id="phase-label">WORK</span>
+    <span class="timer-time" id="timer-display">30:00</span>
+    <span class="timer-cycle" id="cycle-label">CYCLE 1 / 4</span>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="btn btn-ghost" id="btn-prev" onclick="skipPrev()">&#9664;</button>
+  <button class="btn btn-primary" id="btn-main" onclick="toggleTimer()">START</button>
+  <button class="btn btn-ghost" id="btn-next" onclick="skipNext()">&#9654;</button>
+</div>
+
+<!-- Alarm banner -->
+<div class="alarm-banner" id="alarm-banner">
+  <div class="alarm-text">
+    <strong id="alarm-title">Time's up!</strong>
+    <span id="alarm-sub">Alarm ringing...</span>
+  </div>
+  <button class="btn btn-primary" onclick="stopAlarm()" style="min-width:auto;padding:10px 20px;font-size:13px;">STOP</button>
+</div>
+
+<!-- Stats -->
+<div class="stats-wrap">
+  <div class="stats-header">
+    <span class="stats-title">Today's Stats</span>
+    <button class="btn-clear" onclick="clearStats()">CLEAR</button>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card"><span class="stat-val" id="stat-pomodoros">0</span><span class="stat-label">Pomodoros</span></div>
+    <div class="stat-card"><span class="stat-val" id="stat-focus">0m</span><span class="stat-label">Focus Time</span></div>
+    <div class="stat-card"><span class="stat-val" id="stat-cycles">0</span><span class="stat-label">Full Cycles</span></div>
+  </div>
+  <div class="log-wrap" id="log-wrap">
+    <div class="log-empty" id="log-empty">No sessions yet. Start the timer!</div>
+  </div>
+</div>
+
+<script>
+// --- Phases definition ---
+// 1 full cycle = 4x [work 30min, break 5min] + 1 long break 20min
+const PHASES = [];
+for (let c = 1; c <= 4; c++) {
+  PHASES.push({ type: 'work', label: 'WORK', duration: 30 * 60, cycle: c });
+  if (c < 4) PHASES.push({ type: 'break', label: 'SHORT BREAK', duration: 5 * 60, cycle: c });
+}
+PHASES.push({ type: 'long', label: 'LONG BREAK', duration: 20 * 60, cycle: 4 });
+
+const PHASE_COLORS = { work: '#e8614a', break: '#4ab89e', long: '#7b6ef6' };
+const CIRCUMFERENCE = 2 * Math.PI * 126;
+
+let currentPhase = 0;
+let timeLeft = PHASES[0].duration;
+let running = false;
+let interval = null;
+let alarmInterval = null;
+let audioCtx = null;
+let alarmNodes = [];
+
+// Stats
+let stats = JSON.parse(localStorage.getItem('pomo_stats') || '{"pomodoros":0,"focusMins":0,"cycles":0,"log":[]}');
+let todayKey = new Date().toDateString();
+if (localStorage.getItem('pomo_date') !== todayKey) {
+  stats = { pomodoros: 0, focusMins: 0, cycles: 0, log: [] };
+  localStorage.setItem('pomo_date', todayKey);
+  saveStats();
+}
+
+function saveStats() {
+  localStorage.setItem('pomo_stats', JSON.stringify(stats));
+}
+
+// --- UI Render ---
+function buildPhasePills() {
+  const bar = document.getElementById('phase-bar');
+  bar.innerHTML = '';
+  const labels = ['W1','B1','W2','B2','W3','B3','W4','LB'];
+  const types = ['work','break','work','break','work','break','work','long'];
+  labels.forEach((l, i) => {
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    pill.textContent = l;
+    pill.id = 'pill-' + i;
+    bar.appendChild(pill);
+  });
+  updatePills();
+}
+
+function updatePills() {
+  for (let i = 0; i < 8; i++) {
+    const el = document.getElementById('pill-' + i);
+    if (!el) continue;
+    el.className = 'pill';
+    if (i < currentPhase) el.classList.add('done');
+    else if (i === currentPhase) {
+      const t = PHASES[i].type;
+      el.classList.add(t === 'work' ? 'active-work' : t === 'break' ? 'active-break' : 'active-long');
+    }
+  }
+}
+
+function updateTimerDisplay() {
+  const ph = PHASES[currentPhase];
+  const mins = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+  const secs = (timeLeft % 60).toString().padStart(2, '0');
+  document.getElementById('timer-display').textContent = `${mins}:${secs}`;
+  document.getElementById('phase-label').textContent = ph.label;
+  document.getElementById('timer-display').style.color = PHASE_COLORS[ph.type];
+
+  const workCount = PHASES.filter((p, i) => p.type === 'work' && i <= currentPhase).length;
+  const cycleNum = Math.min(ph.cycle || workCount, 4);
+  document.getElementById('cycle-label').textContent = ph.type === 'long' ? 'LONG BREAK' : `CYCLE ${cycleNum} / 4`;
+
+  // Ring
+  const total = ph.duration;
+  const frac = timeLeft / total;
+  const offset = CIRCUMFERENCE * (1 - frac);
+  document.getElementById('ring-progress').setAttribute('stroke-dashoffset', offset);
+  document.getElementById('ring-progress').setAttribute('stroke', PHASE_COLORS[ph.type]);
+}
+
+function updateStats() {
+  document.getElementById('stat-pomodoros').textContent = stats.pomodoros;
+  document.getElementById('stat-focus').textContent = stats.focusMins + 'm';
+  document.getElementById('stat-cycles').textContent = stats.cycles;
+
+  const logWrap = document.getElementById('log-wrap');
+  const empty = document.getElementById('log-empty');
+  if (stats.log.length === 0) {
+    logWrap.innerHTML = '<div class="log-empty" id="log-empty">No sessions yet. Start the timer!</div>';
+    return;
+  }
+  logWrap.innerHTML = '';
+  [...stats.log].reverse().forEach(entry => {
+    const div = document.createElement('div');
+    div.className = 'log-item';
+    const dot = document.createElement('div');
+    dot.className = 'log-dot ' + entry.type;
+    const desc = document.createElement('div');
+    desc.className = 'log-desc';
+    desc.textContent = entry.desc;
+    const time = document.createElement('div');
+    time.className = 'log-time';
+    time.textContent = entry.time;
+    div.appendChild(dot); div.appendChild(desc); div.appendChild(time);
+    logWrap.appendChild(div);
+  });
+}
+
+// --- Wall-clock based timer (survives tab switches) ---
+let endTime = null;
+
+function toggleTimer() {
+  if (running) { pauseTimer(); }
+  else { startTimer(); }
+}
+
+function startTimer() {
+  running = true;
+  endTime = Date.now() + timeLeft * 1000;
+  document.getElementById('btn-main').textContent = 'PAUSE';
+  clearInterval(interval);
+  interval = setInterval(tick, 500);
+}
+
+function pauseTimer() {
+  running = false;
+  clearInterval(interval);
+  timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+  endTime = null;
+  document.getElementById('btn-main').textContent = 'RESUME';
+  updateTimerDisplay();
+}
+
+function tick() {
+  if (!running || !endTime) return;
+  const remaining = Math.ceil((endTime - Date.now()) / 1000);
+  if (remaining > 0) {
+    timeLeft = remaining;
+    updateTimerDisplay();
+  } else {
+    timeLeft = 0;
+    updateTimerDisplay();
+    clearInterval(interval);
+    running = false;
+    endTime = null;
+    phaseComplete();
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && running && endTime) {
+    const remaining = Math.ceil((endTime - Date.now()) / 1000);
+    if (remaining <= 0) {
+      timeLeft = 0;
+      clearInterval(interval);
+      running = false;
+      endTime = null;
+      phaseComplete();
+    } else {
+      timeLeft = remaining;
+      updateTimerDisplay();
+    }
+  }
+});
+
+function phaseComplete() {
+  const ph = PHASES[currentPhase];
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  if (ph.type === 'work') {
+    stats.pomodoros++;
+    stats.focusMins += 30;
+    stats.log.push({ type: 'work', desc: `Work session (30 min) — Cycle ${ph.cycle}`, time: timeStr });
+  } else if (ph.type === 'break') {
+    stats.log.push({ type: 'break', desc: `Short break (5 min) — Cycle ${ph.cycle}`, time: timeStr });
+  } else if (ph.type === 'long') {
+    stats.cycles++;
+    stats.log.push({ type: 'long', desc: 'Long break (20 min) — Full cycle complete!', time: timeStr });
+  }
+  saveStats();
+  updateStats();
+
+  triggerAlarm(ph);
+}
+
+function nextPhase() {
+  currentPhase = (currentPhase + 1) % PHASES.length;
+  timeLeft = PHASES[currentPhase].duration;
+  updatePills();
+  updateTimerDisplay();
+  document.getElementById('btn-main').textContent = 'START';
+}
+
+function skipNext() {
+  if (running) pauseTimer();
+  clearInterval(alarmInterval);
+  alarmInterval = null;
+  alarmNodes = [];
+  document.getElementById('alarm-banner').classList.remove('show');
+  nextPhase();
+}
+
+function skipPrev() {
+  if (running) pauseTimer();
+  clearInterval(alarmInterval);
+  alarmInterval = null;
+  alarmNodes = [];
+  document.getElementById('alarm-banner').classList.remove('show');
+  currentPhase = (currentPhase - 1 + PHASES.length) % PHASES.length;
+  timeLeft = PHASES[currentPhase].duration;
+  updatePills();
+  updateTimerDisplay();
+  document.getElementById('btn-main').textContent = 'START';
+}
+
+// --- Alarm ---
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playBeep() {
+  try {
+    const ctx = getAudioCtx();
+    const notes = [880, 1100, 880, 1320];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.18;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.35, t + 0.04);
+      gain.gain.linearRampToValueAtTime(0, t + 0.15);
+      osc.start(t);
+      osc.stop(t + 0.18);
+      alarmNodes.push(osc);
+    });
+  } catch(e) {}
+}
+
+function triggerAlarm(ph) {
+  const title = ph.type === 'work' ? '✓ Work session complete!' :
+    ph.type === 'break' ? '✓ Short break done!' : '✓ Full cycle complete!';
+  const sub = ph.type === 'work' ? 'Time for a 5-min break →' :
+    ph.type === 'long' ? 'Incredible! Ready for another cycle?' : 'Back to work →';
+
+  document.getElementById('alarm-title').textContent = title;
+  document.getElementById('alarm-sub').textContent = sub;
+  document.getElementById('alarm-banner').classList.add('show');
+
+  // Browser notification (works even when tab is in background)
+  if (Notification.permission === 'granted') {
+    const n = new Notification('Pomodoro Timer', { body: title + ' ' + sub, icon: '' });
+    setTimeout(() => n.close(), 8000);
+  }
+
+  playBeep();
+  alarmInterval = setInterval(playBeep, 1200);
+}
+
+// Request notification permission upfront
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+
+function stopAlarm() {
+  clearInterval(alarmInterval);
+  alarmInterval = null;
+  alarmNodes = [];
+  document.getElementById('alarm-banner').classList.remove('show');
+  // Advance to next phase (loops back to 0 after last phase) and auto-start
+  currentPhase = (currentPhase + 1) % PHASES.length;
+  timeLeft = PHASES[currentPhase].duration;
+  updatePills();
+  updateTimerDisplay();
+  startTimer();
+}
+
+function clearStats() {
+  if (!confirm('Clear all stats for today?')) return;
+  stats = { pomodoros: 0, focusMins: 0, cycles: 0, log: [] };
+  saveStats();
+  updateStats();
+}
+
+// --- Init ---
+buildPhasePills();
+updateTimerDisplay();
+updateStats();
+</script>
+</body>
+</html>
